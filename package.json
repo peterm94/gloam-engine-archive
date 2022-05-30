@@ -1,6 +1,6 @@
-  {
-  "author": "You <you@example.com>",
-  "name": "rust-webpack-template",
+{
+  "author": "Peter Mandile <peterm1994@hotmail.com>",
+  "name": "gloam-engine",
   "version": "0.1.0",
   "scripts": {
     "build": "rimraf dist pkg && webpack",
