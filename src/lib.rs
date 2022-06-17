@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-pub mod ecs;
+pub mod game_tree;
+pub mod nodes;
 
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
@@ -25,9 +26,4 @@ pub fn main_js() -> Result<(), JsValue> {
     console::log_1(&JsValue::from_str("tesrtt!"));
 
     Ok(())
-}
-
-#[wasm_bindgen]
-pub fn greet() {
-    console::log_1(&JsValue::from_str("tesrtt!"));
 }
