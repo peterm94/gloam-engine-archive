@@ -1,7 +1,7 @@
 {
   "author": "Peter Mandile <peterm1994@hotmail.com>",
   "name": "gloam-engine",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "scripts": {
     "build": "rimraf dist pkg && webpack",
     "start": "rimraf dist pkg && webpack-dev-server --open -d",

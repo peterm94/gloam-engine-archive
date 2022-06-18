@@ -1,9 +1,9 @@
 # You must change these to your own details.
 [package]
-name = "rust-webpack-template"
-description = "My super awesome Rust, WebAssembly, and Webpack project!"
-version = "0.1.0"
-authors = ["You <you@example.com>"]
+name = "gloam-engine"
+description = "Gloam Engine"
+version = "0.0.1"
+authors = ["Peter Mandile <peterm1994@hotmail.com>"]
 categories = ["wasm"]
 readme = "README.md"
 edition = "2021"
