@@ -1,8 +1,9 @@
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-// pub mod game_tree;
+pub mod game_tree;
 pub mod nodes;
+pub mod game;
 
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.

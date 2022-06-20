@@ -1,8 +1,6 @@
 use wasm_bindgen::prelude::*;
+use crate::game::Node;
 
-trait Node {
-    fn update(&self);
-}
 
 #[wasm_bindgen(typescript_custom_section)]
 const SCRIPT: &'static str = r#"
@@ -27,37 +25,35 @@ impl Node for Script {
     }
 }
 
-struct RustScript;
-impl Node for RustScript {
-    fn update(&self) {
-        // println!("don't panic");
-        web_sys::console::log_1(&"I made this in rust and didn't export the type".into());
-    }
+#[wasm_bindgen]
+pub struct AsciiRenderer {
+    node: web_sys::Node,
 }
 
 #[wasm_bindgen]
-pub struct Game {
-    scripts: Vec<Box<dyn Node>>,
-}
-
-#[wasm_bindgen]
-impl Game {
+impl AsciiRenderer {
+    #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        Self { scripts: vec![] }
+        let window = web_sys::window().expect("no global `window` exists");
+        let document = window.document().expect("should have a document on window");
+        let body = document.body().expect("document should have a body");
+
+        // Manufacture the element we're gonna append
+        let val = document.create_element("p").unwrap();
+        val.set_text_content(Some("Hello from Rust!"));
+
+        let node = body.append_child(&val).unwrap();
+        Self { node }
     }
 
-    pub fn add_rust_script(&mut self) {
-        self.scripts.push(Box::new(RustScript));
+    pub fn set_text(&mut self, value: String) {
+        self.node.set_text_content(Some(value.as_str()));
     }
+}
 
-    pub fn add_web_script(&mut self, script: Script) {
-        self.scripts.push(Box::new(script));
-    }
-
-    pub fn run_all_scripts(&self) {
-        for x in &self.scripts {
-            x.update();
-        }
+impl Node for AsciiRenderer {
+    fn update(&self) {
+        // no op
     }
 }
 
