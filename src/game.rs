@@ -1,4 +1,4 @@
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -10,11 +10,11 @@ use crate::game_tree::Tree;
 use crate::nodes::{AsciiRenderer, Script};
 
 thread_local! {
-    pub static GAME: GameStorage = GameStorage {
+    pub static GAME: Rc<RefCell<GameStorage>> = Rc::new(RefCell::new(GameStorage {
                 id_count: 1,
                 objects: HashMap::new(),
                 // renderer: AsciiRenderer::new(),
-    };
+    }));
 }
 
 unsafe impl Sync for GameStorage {}
@@ -33,8 +33,8 @@ struct Transform {
 #[wasm_bindgen(typescript_custom_section)]
 const SCRIPT: &'static str = r#"
 interface JsGameObject {
-    init: () => void;
-    update: () => void;
+    init(): void;
+    update(): void;
 }
 "#;
 
@@ -67,7 +67,7 @@ pub struct ObjRef {
 pub struct GameStorage {
     pub id_count: usize,
     // objects: Vec<(Rc<GameObject>, Box<JsGameObject>)>,
-    pub objects: HashMap<ObjRef, Box<JsGameObject>>,
+    pub objects: HashMap<usize, Rc<JsGameObject>>,
     // renderer: AsciiRenderer,
 }
 
@@ -76,39 +76,49 @@ impl GameStorage {
         let id = self.id_count;
         self.id_count += 1;
 
-        self.objects.insert(ObjRef { id, parent: 0 }, Box::new(js_object));
-
-        // let ga = Rc::new(GameObject { id, parent: 0, transform: Default::default() });
-        // self.objects.push((ga, Box::new(js_object)));
-
-        // call init on it
+        self.objects.insert(id, Rc::new(js_object));
         return id;
+    }
+
+    pub fn get_script(&self, obj_id: usize) -> Rc<JsGameObject>
+    {
+        self.objects.get(&obj_id).unwrap().clone()
     }
 }
 
 #[wasm_bindgen]
 pub struct Game {
-    // game_storage: GameStorage
+    game_storage: Rc<RefCell<GameStorage>>,
 }
 
 #[wasm_bindgen]
 impl Game {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        Self {}
+        Self { game_storage: GAME.with(|storage| { storage.clone() }) }
     }
 
-    pub fn update(&mut self) {
+    // pub(crate) fn wrapping(game_storage: Rc<RefCell<GameStorage>>) -> Self {
+    //     Self { game_storage }
+    // }
+
+    pub fn update(&self) {
+
+        // Add pending objects and run init on them
+
+        // Call update on everything
+
         GAME.with(|storage| {
-            for (obj_ref, script) in storage.objects.iter() {
-                script.update();
-            }
+            // let storage = storage.clone().borrow();
+            // for (obj_ref, script) in storage.objects.iter() {
+            //     script.update();
+            // }
         });
 
         self.draw();
     }
 
-    pub fn draw(&mut self) {
+    pub fn draw(&self) {
         // let mut value = String::new();
         // for (ga, ..) in &self.game_storage.objects {
         //     value += &ga.id.to_string();
@@ -117,9 +127,13 @@ impl Game {
         // self.game_storage.borrow_mut().renderer.set_text(value);
     }
 
-    // TODO remove this, add a way for a game init that takes the shim like the others
-    pub fn add_game_object(&mut self, js_object: JsGameObject) -> usize {
-        // GAME.borrow().add_game_object(js_object)
-        0
+    pub fn add_game_object(&self, js_object: JsGameObject) -> usize {
+
+        let storage: &RefCell<GameStorage> = self.game_storage.borrow();
+        let id = storage.borrow_mut().add_game_object(js_object);
+        let script: Rc<JsGameObject> = storage.borrow().get_script(id);
+
+        script.init();
+        id
     }
 }
