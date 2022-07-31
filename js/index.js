@@ -1,1 +1,3 @@
-import("../pkg/index.js").catch(console.error);
+import("../pkg/index.js").then(gloam => {
+
+}).catch(console.error);

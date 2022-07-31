@@ -1,6 +1,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
+use std::ops::Add;
 use std::rc::Rc;
 use std::sync::Mutex;
 
@@ -15,6 +16,8 @@ thread_local! {
                 objects: HashMap::new(),
                 // renderer: AsciiRenderer::new(),
     }));
+
+    pub static ID_COUNT: usize = 0;
 }
 
 unsafe impl Sync for GameStorage {}
@@ -89,30 +92,29 @@ impl GameStorage {
 #[wasm_bindgen]
 pub struct Game {
     game_storage: Rc<RefCell<GameStorage>>,
+    to_add: Vec<(usize, Rc<JsGameObject>)>,
+    to_delete: Vec<usize>,
 }
 
 #[wasm_bindgen]
 impl Game {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        Self { game_storage: GAME.with(|storage| { storage.clone() }) }
+        Self {
+            game_storage: GAME.with(|storage| { storage.clone() }),
+            to_add: vec![],
+            to_delete: vec![],
+        }
     }
 
-    // pub(crate) fn wrapping(game_storage: Rc<RefCell<GameStorage>>) -> Self {
-    //     Self { game_storage }
-    // }
+    pub fn update(&mut self) {
+        self.apply_add();
 
-    pub fn update(&self) {
-
-        // Add pending objects and run init on them
-
-        // Call update on everything
-
-        GAME.with(|storage| {
-            // let storage = storage.clone().borrow();
-            // for (obj_ref, script) in storage.objects.iter() {
-            //     script.update();
-            // }
+        GAME.with(|game_storage| {
+            let storage: &RefCell<GameStorage> = game_storage.borrow();
+            for (obj_ref, script) in storage.borrow().objects.iter() {
+                script.update();
+            }
         });
 
         self.draw();
@@ -127,13 +129,32 @@ impl Game {
         // self.game_storage.borrow_mut().renderer.set_text(value);
     }
 
-    pub fn add_game_object(&self, js_object: JsGameObject) -> usize {
+    pub fn add_game_object(&mut self, js_object: JsGameObject) -> usize {
+        let id = ID_COUNT.with(|mut id_count| {
+            id_count.add(1);
+            *id_count
+        });
 
-        let storage: &RefCell<GameStorage> = self.game_storage.borrow();
-        let id = storage.borrow_mut().add_game_object(js_object);
-        let script: Rc<JsGameObject> = storage.borrow().get_script(id);
-
-        script.init();
+        self.to_add.push((id, Rc::new(js_object)));
         id
+    }
+
+    fn apply_add(&mut self) {
+        let ids = GAME.with(|game_storage| {
+            let storage: &RefCell<GameStorage> = game_storage.borrow();
+            let mut storage = storage.borrow_mut();
+            self.to_add.drain(..).map(|(id, script)| {
+                storage.objects.insert(id, script);
+                id
+            }).collect::<Vec<usize>>()
+        });
+        GAME.with(|game_storage| {
+            let storage: &RefCell<GameStorage> = game_storage.borrow();
+            let storage = storage.borrow();
+
+            for id in ids {
+                storage.get_script(id).init();
+            }
+        });
     }
 }
