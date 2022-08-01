@@ -1,8 +1,8 @@
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use js_sys::{Function, JsString};
+use js_sys::{Array, Function, JsString, Uint32Array};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
@@ -33,6 +33,9 @@ extern "C" {
 extern "C" {
     #[wasm_bindgen(typescript_type = "(object: JsGameObject) => void")]
     pub type WithObjFn;
+
+    #[wasm_bindgen(typescript_type = "number[]")]
+    pub type JsNumArray;
 }
 
 pub static mut ID_COUNT: usize = 1;
@@ -120,6 +123,29 @@ impl Gloam {
             let objects = objects.borrow();
             if let Some(obj) = objects.get(&id) {
                 f.call1(&this, obj);
+            }
+        });
+    }
+
+    pub fn with_objects(ids: JsNumArray, f: &WithObjFn) {
+        let ids = JsValue::from(ids).unchecked_into::<Array>();
+        let f = JsValue::from(f).unchecked_into::<Function>();
+
+        let this = JsValue::null();
+
+        OBJECTS.with(|objects| {
+            let objects = objects.borrow();
+
+            for id in ids.iter() {
+                let id = JsValue::from(id).as_f64().unwrap() as usize;
+                match ids.length() {
+                    1 => {
+                        if let Some(o1) = objects.get(&id) {
+                            f.call1(&this, o1);
+                        }
+                    }
+                    _ => {}
+                }
             }
         });
     }
