@@ -82,14 +82,25 @@ impl Gloam {
 
     pub fn add_object(js_object: JsGameObject) -> usize {
         let name = Gloam::get_js_obj_name(&js_object);
-
-        console::log_1(&format!("ADD {name}").into());
         unsafe {
             let id = ID_COUNT;
             ID_COUNT += 1;
             NEXT_OBJECTS.push((id, js_object));
+
+            Gloam::add_type(name, id);
             id
         }
+    }
+
+    fn add_type(name: String, id: usize) {
+        OBJECTS_INDEX.with(|index| {
+            let mut index = index.borrow_mut();
+            if let Some(inner) = index.types.get_mut(&name) {
+                inner.push(id);
+            } else {
+                index.types.insert(name, Box::new(vec![id]));
+            }
+        });
     }
 
     pub fn destroy_object(id: usize) {
@@ -110,7 +121,7 @@ impl Gloam {
         OBJECTS_INDEX.with(|index| {
             if let Some(ids) = index.borrow().types.get(&name) {
                 OBJECTS.with(|objects| {
-                   let objects = objects.borrow();
+                    let objects = objects.borrow();
                     for id in ids.iter() {
                         let this = JsValue::null();
                         let obj = objects.get(id).unwrap();
