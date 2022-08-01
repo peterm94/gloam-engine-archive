@@ -1,9 +1,11 @@
-use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::hash::Hash;
 
+use js_sys::JsString;
 use wasm_bindgen::prelude::*;
+use web_sys::console;
+use web_sys::console::log_1;
 
 #[wasm_bindgen(typescript_custom_section)]
 const SCRIPT: &'static str = r#"
@@ -31,8 +33,17 @@ pub static mut NEXT_OBJECTS: Vec<(usize, JsGameObject)> = vec![];
 
 thread_local! {
 pub static OBJECTS: RefCell<HashMap<usize, JsGameObject>> = RefCell::new(HashMap::new());
+pub static OBJECTS_INDEX: RefCell<ObjectsIndex> = RefCell::new(ObjectsIndex::default());
 }
 pub static mut DEL_OBJECTS: Vec<usize> = vec![];
+
+#[derive(Default)]
+pub struct ObjectsIndex {
+    names: HashMap<String, usize>,
+    types: HashMap<String, Box<Vec<usize>>>,
+    tags: HashMap<String, Box<Vec<usize>>>,
+}
+
 
 #[wasm_bindgen]
 struct Gloam;
@@ -70,6 +81,9 @@ impl Gloam {
     }
 
     pub fn add_object(js_object: JsGameObject) -> usize {
+        let name = Gloam::get_js_obj_name(&js_object);
+
+        console::log_1(&format!("ADD {name}").into());
         unsafe {
             let id = ID_COUNT;
             ID_COUNT += 1;
@@ -80,5 +94,44 @@ impl Gloam {
 
     pub fn destroy_object(id: usize) {
         unsafe { DEL_OBJECTS.push(id) };
+    }
+
+    pub fn with_object(id: usize, f: &js_sys::Function) {
+        OBJECTS.with(|objects| {
+            let this = JsValue::null();
+            let objects = objects.borrow();
+            let obj = objects.get(&id).unwrap();
+            f.call1(&this, obj);
+        });
+    }
+
+    pub fn with_type(type_name: &JsString, f: &js_sys::Function) {
+        let name: String = type_name.into();
+        OBJECTS_INDEX.with(|index| {
+            if let Some(ids) = index.borrow().types.get(&name) {
+                OBJECTS.with(|objects| {
+                   let objects = objects.borrow();
+                    for id in ids.iter() {
+                        let this = JsValue::null();
+                        let obj = objects.get(id).unwrap();
+                        f.call1(&this, obj);
+                    }
+                });
+            }
+        })
+    }
+
+    pub fn find_objs_with_type(type_name: &JsString) -> Vec<usize> {
+        unimplemented!()
+    }
+
+    pub fn find_obj_with_type(type_name: &JsString) -> usize {
+        unimplemented!()
+    }
+
+    fn get_js_obj_name(x: &JsValue) -> String {
+        let proto = js_sys::Object::get_prototype_of(x);
+        let constructor = proto.constructor();
+        constructor.name().as_string().unwrap()
     }
 }
