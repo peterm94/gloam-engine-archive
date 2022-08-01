@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use js_sys::JsString;
+use js_sys::{Function, JsString};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 use web_sys::console::log_1;
@@ -26,6 +27,12 @@ extern "C" {
 
     #[wasm_bindgen(structural, method)]
     pub fn init(this: &JsGameObject);
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "(object: JsGameObject) => void")]
+    pub type WithObjFn;
 }
 
 pub static mut ID_COUNT: usize = 1;
@@ -111,12 +118,14 @@ impl Gloam {
         OBJECTS.with(|objects| {
             let this = JsValue::null();
             let objects = objects.borrow();
-            let obj = objects.get(&id).unwrap();
-            f.call1(&this, obj);
+            if let Some(obj) = objects.get(&id) {
+                f.call1(&this, obj);
+            }
         });
     }
 
-    pub fn with_type(type_name: &JsString, f: &js_sys::Function) {
+    pub fn with_type(type_name: &JsString, f: &WithObjFn) {
+        let f = JsValue::from(f).unchecked_into::<Function>();
         let name: String = type_name.into();
         OBJECTS_INDEX.with(|index| {
             if let Some(ids) = index.borrow().types.get(&name) {
@@ -124,8 +133,9 @@ impl Gloam {
                     let objects = objects.borrow();
                     for id in ids.iter() {
                         let this = JsValue::null();
-                        let obj = objects.get(id).unwrap();
-                        f.call1(&this, obj);
+                        if let Some(obj) = objects.get(&id) {
+                            f.call1(&this, obj);
+                        }
                     }
                 });
             }
