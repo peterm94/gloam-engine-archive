@@ -1,6 +1,7 @@
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::rc::Rc;
 
 use js_sys::{Array, Function, JsString, Uint32Array};
 use wasm_bindgen::JsCast;
@@ -12,7 +13,7 @@ use web_sys::console::log_1;
 const SCRIPT: &'static str = r#"
 interface JsGameObject {
     init(): void;
-    update(): void;
+    update(delta: number): void;
 }
 "#;
 
@@ -23,7 +24,7 @@ extern "C" {
     pub type JsGameObject;
 
     #[wasm_bindgen(structural, method)]
-    pub fn update(this: &JsGameObject);
+    pub fn update(this: &JsGameObject, delta: f64);
 
     #[wasm_bindgen(structural, method)]
     pub fn init(this: &JsGameObject);
@@ -60,7 +61,7 @@ struct Gloam;
 
 #[wasm_bindgen]
 impl Gloam {
-    pub fn update() {
+    pub fn update(delta: f64) {
         unsafe {
             DEL_OBJECTS.drain(..).for_each(|x| {
                 OBJECTS.with(|objects| {
@@ -84,7 +85,7 @@ impl Gloam {
             }
             OBJECTS.with(|objects| {
                 for (_, object) in objects.borrow().iter() {
-                    object.update();
+                    object.update(delta);
                 }
             });
         }
@@ -139,9 +140,10 @@ impl Gloam {
             for id in ids.iter() {
                 let id = JsValue::from(id).as_f64().unwrap() as usize;
                 match ids.length() {
+                    // TODO can I make this dynamic?
                     1 => {
                         if let Some(o1) = objects.get(&id) {
-                            f.call1(&this, o1);
+                            f.call1(&this, o1).unwrap();
                         }
                     }
                     _ => {}
@@ -160,7 +162,7 @@ impl Gloam {
                     for id in ids.iter() {
                         let this = JsValue::null();
                         if let Some(obj) = objects.get(&id) {
-                            f.call1(&this, obj);
+                            f.call1(&this, obj).unwrap();
                         }
                     }
                 });
@@ -180,5 +182,29 @@ impl Gloam {
         let proto = js_sys::Object::get_prototype_of(x);
         let constructor = proto.constructor();
         constructor.name().as_string().unwrap()
+    }
+
+    pub fn start() {
+
+        let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
+        let outer_f = f.clone();
+
+        let window = web_sys::window().unwrap();
+        if let Some(perf) = window.performance() {
+            let mut prev_delta = perf.now();
+
+            *outer_f.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+                let now = perf.now();
+                let delta = now - prev_delta;
+                prev_delta = now;
+
+                Gloam::update(delta);
+
+                window.request_animation_frame(f.borrow().as_ref().unwrap().as_ref().unchecked_ref()).unwrap();
+            }) as Box<dyn FnMut()>));
+        }
+
+        let window = web_sys::window().unwrap();
+        window.request_animation_frame(outer_f.borrow().as_ref().unwrap().as_ref().unchecked_ref()).unwrap();
     }
 }

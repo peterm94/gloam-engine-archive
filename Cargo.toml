@@ -42,7 +42,7 @@ features = [
     'Element',
     'HtmlCanvasElement',
     'HtmlImageElement',
-#    'Performance',
+    'Performance',
 #    'WebGlFramebuffer',
 #    'WebGl2RenderingContext',
 #    'WebGlUniformLocation',
