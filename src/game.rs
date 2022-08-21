@@ -1,43 +1,22 @@
-use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
-use std::ops::Add;
+use std::hash::Hash;
 use std::rc::Rc;
-use std::sync::Mutex;
 
+use image::ImageFormat;
+use js_sys::{Array, Function, JsString, Uint32Array};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
+use web_sys::console;
+use web_sys::console::log_1;
 
-use crate::game_tree::Tree;
-use crate::nodes::{AsciiRenderer, Script};
-
-thread_local! {
-    pub static GAME: Rc<RefCell<GameStorage>> = Rc::new(RefCell::new(GameStorage {
-                id_count: 1,
-                objects: HashMap::new(),
-                // renderer: AsciiRenderer::new(),
-    }));
-
-    pub static ID_COUNT: usize = 0;
-}
-
-unsafe impl Sync for GameStorage {}
-
-
-pub trait Node {
-    fn update(&self);
-}
-
-#[derive(Default)]
-struct Transform {
-    x: f32,
-    y: f32,
-}
+use crate::renderer::{Renderer, Texture};
 
 #[wasm_bindgen(typescript_custom_section)]
 const SCRIPT: &'static str = r#"
 interface JsGameObject {
     init(): void;
-    update(): void;
+    update(delta: number): void;
 }
 "#;
 
@@ -48,113 +27,217 @@ extern "C" {
     pub type JsGameObject;
 
     #[wasm_bindgen(structural, method)]
-    pub fn update(this: &JsGameObject);
+    pub fn update(this: &JsGameObject, delta: f64);
 
     #[wasm_bindgen(structural, method)]
     pub fn init(this: &JsGameObject);
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "(object: JsGameObject) => void")]
+    pub type WithObjFn;
 
-pub struct GameObject {
-    id: usize,
-    parent: usize,
-    transform: Transform,
+    #[wasm_bindgen(typescript_type = "number[]")]
+    pub type JsNumArray;
 }
 
-#[derive(Eq, Hash, PartialEq)]
-pub struct ObjRef {
-    id: usize,
-    parent: usize,
+pub static mut ID_COUNT: usize = 1;
+pub static mut NEXT_OBJECTS: Vec<(usize, JsGameObject)> = vec![];
+
+thread_local! {
+pub static OBJECTS: RefCell<HashMap<usize, JsGameObject>> = RefCell::new(HashMap::new());
+pub static OBJECTS_INDEX: RefCell<ObjectsIndex> = RefCell::new(ObjectsIndex::default());
+pub static RENDERER: RefCell<Renderer> = RefCell::new(Renderer::new("canvas").unwrap());
+}
+pub static mut TEXTURES: Vec<Texture> = vec![];
+pub static mut DEL_OBJECTS: Vec<usize> = vec![];
+
+#[derive(Default)]
+pub struct ObjectsIndex {
+    names: HashMap<String, usize>,
+    types: HashMap<String, Box<Vec<usize>>>,
+    tags: HashMap<String, Box<Vec<usize>>>,
 }
 
-pub struct GameStorage {
-    pub id_count: usize,
-    // objects: Vec<(Rc<GameObject>, Box<JsGameObject>)>,
-    pub objects: HashMap<usize, Rc<JsGameObject>>,
-    // renderer: AsciiRenderer,
-}
-
-impl GameStorage {
-    pub fn add_game_object(&mut self, js_object: JsGameObject) -> usize {
-        let id = self.id_count;
-        self.id_count += 1;
-
-        self.objects.insert(id, Rc::new(js_object));
-        return id;
-    }
-
-    pub fn get_script(&self, obj_id: usize) -> Rc<JsGameObject>
-    {
-        self.objects.get(&obj_id).unwrap().clone()
-    }
-}
 
 #[wasm_bindgen]
-pub struct Game {
-    game_storage: Rc<RefCell<GameStorage>>,
-    to_add: Vec<(usize, Rc<JsGameObject>)>,
-    to_delete: Vec<usize>,
-}
+struct Gloam;
 
 #[wasm_bindgen]
-impl Game {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self {
-            game_storage: GAME.with(|storage| { storage.clone() }),
-            to_add: vec![],
-            to_delete: vec![],
+impl Gloam {
+    pub fn update_once(delta: f64) {
+        Gloam::update(delta);
+    }
+
+    fn update(delta: f64) {
+        unsafe {
+            DEL_OBJECTS.drain(..).for_each(|x| {
+                OBJECTS.with(|objects| {
+                    objects.borrow_mut().remove(&x);
+                })
+            });
+
+            if !NEXT_OBJECTS.is_empty() {
+                // move the pending additions out of the static so it doesn't cause problems with init()
+                let mut temp = vec![];
+                temp.append(&mut NEXT_OBJECTS);
+
+                // init each object
+                temp.iter().for_each(|(_, x)| x.init());
+
+                // Put them in the global object map
+                OBJECTS.with(|objects| {
+                    let mut objects = objects.borrow_mut();
+                    temp.into_iter().for_each(|(k, v)| { objects.insert(k, v); });
+                });
+            }
+            OBJECTS.with(|objects| {
+                for (_, object) in objects.borrow().iter() {
+                    object.update(delta);
+                }
+            });
+
+            // Render
+            RENDERER.with(|renderer| {
+                let renderer = renderer.borrow();
+                for texture in &TEXTURES {
+                    renderer.draw_image(texture, 0, 0);
+                }
+            });
         }
     }
 
-    pub fn update(&mut self) {
-        self.apply_add();
+    // TODO https://webpack.js.org/guides/asset-modules/#resource-assets
+    pub fn load_texture(xx: web_sys::HtmlImageElement, img_data: &[u8]) -> usize {
+        if let Err(err) = image::load_from_memory(img_data) {
+            console::log_1(&format!("{}", err.to_string()).into());
+        }
+        // let img = image::load_from_memory(img_data).unwrap();
+        // let img = img.to_rgba8();
+        // let len = RENDERER.with(|renderer| {
+        //     let tex = renderer.borrow().load_texture(img);
+        //     unsafe { TEXTURES.push(tex) };
+        //     unsafe { TEXTURES.len() }
+        // });
+        // return len - 1;
+        0
+    }
 
-        GAME.with(|game_storage| {
-            let storage: &RefCell<GameStorage> = game_storage.borrow();
-            for (obj_ref, script) in storage.borrow().objects.iter() {
-                script.update();
+    pub fn add_object(js_object: JsGameObject) -> usize {
+        let name = Gloam::get_js_obj_name(&js_object);
+        unsafe {
+            let id = ID_COUNT;
+            ID_COUNT += 1;
+            NEXT_OBJECTS.push((id, js_object));
+
+            Gloam::add_type(name, id);
+            id
+        }
+    }
+
+    fn add_type(name: String, id: usize) {
+        OBJECTS_INDEX.with(|index| {
+            let mut index = index.borrow_mut();
+            if let Some(inner) = index.types.get_mut(&name) {
+                inner.push(id);
+            } else {
+                index.types.insert(name, Box::new(vec![id]));
             }
         });
-
-        self.draw();
     }
 
-    pub fn draw(&self) {
-        // let mut value = String::new();
-        // for (ga, ..) in &self.game_storage.objects {
-        //     value += &ga.id.to_string();
-        // }
-        //
-        // self.game_storage.borrow_mut().renderer.set_text(value);
+    pub fn destroy_object(id: usize) {
+        unsafe { DEL_OBJECTS.push(id) };
     }
 
-    pub fn add_game_object(&mut self, js_object: JsGameObject) -> usize {
-        let id = ID_COUNT.with(|mut id_count| {
-            id_count.add(1);
-            *id_count
-        });
-
-        self.to_add.push((id, Rc::new(js_object)));
-        id
-    }
-
-    fn apply_add(&mut self) {
-        let ids = GAME.with(|game_storage| {
-            let storage: &RefCell<GameStorage> = game_storage.borrow();
-            let mut storage = storage.borrow_mut();
-            self.to_add.drain(..).map(|(id, script)| {
-                storage.objects.insert(id, script);
-                id
-            }).collect::<Vec<usize>>()
-        });
-        GAME.with(|game_storage| {
-            let storage: &RefCell<GameStorage> = game_storage.borrow();
-            let storage = storage.borrow();
-
-            for id in ids {
-                storage.get_script(id).init();
+    pub fn with_object(id: usize, f: &js_sys::Function) {
+        OBJECTS.with(|objects| {
+            let this = JsValue::null();
+            let objects = objects.borrow();
+            if let Some(obj) = objects.get(&id) {
+                f.call1(&this, obj);
             }
         });
+    }
+
+    pub fn with_objects(ids: JsNumArray, f: &WithObjFn) {
+        let ids = JsValue::from(ids).unchecked_into::<Array>();
+        let f = JsValue::from(f).unchecked_into::<Function>();
+
+        let this = JsValue::null();
+
+        OBJECTS.with(|objects| {
+            let objects = objects.borrow();
+
+            for id in ids.iter() {
+                let id = JsValue::from(id).as_f64().unwrap() as usize;
+                match ids.length() {
+                    // TODO can I make this dynamic?
+                    1 => {
+                        if let Some(o1) = objects.get(&id) {
+                            f.call1(&this, o1).unwrap();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
+    }
+
+    pub fn with_type(type_name: &JsString, f: &WithObjFn) {
+        let f = JsValue::from(f).unchecked_into::<Function>();
+        let name: String = type_name.into();
+        OBJECTS_INDEX.with(|index| {
+            if let Some(ids) = index.borrow().types.get(&name) {
+                OBJECTS.with(|objects| {
+                    let objects = objects.borrow();
+                    for id in ids.iter() {
+                        let this = JsValue::null();
+                        if let Some(obj) = objects.get(&id) {
+                            f.call1(&this, obj).unwrap();
+                        }
+                    }
+                });
+            }
+        })
+    }
+
+    pub fn find_objs_with_type(type_name: &JsString) -> Vec<usize> {
+        unimplemented!()
+    }
+
+    pub fn find_obj_with_type(type_name: &JsString) -> usize {
+        unimplemented!()
+    }
+
+    fn get_js_obj_name(x: &JsValue) -> String {
+        let proto = js_sys::Object::get_prototype_of(x);
+        let constructor = proto.constructor();
+        constructor.name().as_string().unwrap()
+    }
+
+    pub fn start() {
+        let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
+        let outer_f = f.clone();
+
+        let window = web_sys::window().unwrap();
+        if let Some(perf) = window.performance() {
+            let mut prev_delta = perf.now();
+
+            *outer_f.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+                let now = perf.now();
+                let delta = now - prev_delta;
+                prev_delta = now;
+
+                Gloam::update(delta);
+
+                // TODO https://rustwasm.github.io/wasm-bindgen/examples/request-animation-frame.html
+                window.request_animation_frame(f.borrow().as_ref().unwrap().as_ref().unchecked_ref()).unwrap();
+            }) as Box<dyn FnMut()>));
+        }
+
+        let window = web_sys::window().unwrap();
+        window.request_animation_frame(outer_f.borrow().as_ref().unwrap().as_ref().unchecked_ref()).unwrap();
     }
 }

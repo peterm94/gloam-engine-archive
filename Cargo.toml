@@ -21,8 +21,7 @@ lto = true
 #default = ["wee_alloc"]
 
 [dependencies]
-# The `wasm-bindgen` crate provides the bare minimum functionality needed
-# to interact with JavaScript.
+
 wasm-bindgen = "0.2.45"
 js-sys = "0.3.57"
 
@@ -31,8 +30,10 @@ js-sys = "0.3.57"
 # allocator, so it's not enabled by default.
 wee_alloc = { version = "0.4.2", optional = true }
 
-# The `web-sys` crate allows you to interact with the various browser APIs,
-# like the DOM.
+cgmath = "0.18"
+image = "0.23"
+
+
 [dependencies.web-sys]
 version = "0.3.50"
 
@@ -43,14 +44,14 @@ features = [
     'HtmlCanvasElement',
     'HtmlImageElement',
     'Performance',
-#    'WebGlFramebuffer',
-#    'WebGl2RenderingContext',
-#    'WebGlUniformLocation',
-#    'WebGlBuffer',
-#    'WebGlProgram',
-#    'WebGlShader',
-#    'WebGlVertexArrayObject',
-#    'WebGlTexture',
+    'WebGlFramebuffer',
+    'WebGl2RenderingContext',
+    'WebGlUniformLocation',
+    'WebGlBuffer',
+    'WebGlProgram',
+    'WebGlShader',
+    'WebGlVertexArrayObject',
+    'WebGlTexture',
     'Window',
 ]
 
