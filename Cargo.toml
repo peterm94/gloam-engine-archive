@@ -32,7 +32,7 @@ wee_alloc = { version = "0.4.2", optional = true }
 
 cgmath = "0.18"
 image = "0.23"
-
+data-url = "0.1"
 
 [dependencies.web-sys]
 version = "0.3.50"

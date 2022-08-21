@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
 
+use data_url::DataUrl;
 use image::ImageFormat;
-use js_sys::{Array, Function, JsString, Uint32Array};
+use js_sys::{Array, Function, JsString};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
@@ -109,19 +110,18 @@ impl Gloam {
     }
 
     // TODO https://webpack.js.org/guides/asset-modules/#resource-assets
-    pub fn load_texture(xx: web_sys::HtmlImageElement, img_data: &[u8]) -> usize {
-        if let Err(err) = image::load_from_memory(img_data) {
-            console::log_1(&format!("{}", err.to_string()).into());
-        }
-        // let img = image::load_from_memory(img_data).unwrap();
-        // let img = img.to_rgba8();
-        // let len = RENDERER.with(|renderer| {
-        //     let tex = renderer.borrow().load_texture(img);
-        //     unsafe { TEXTURES.push(tex) };
-        //     unsafe { TEXTURES.len() }
-        // });
-        // return len - 1;
-        0
+    pub fn load_texture(img_data: &str) -> usize {
+        let url = DataUrl::process(img_data).unwrap();
+        let (body, ..) = url.decode_to_vec().unwrap();
+
+        let img = image::load_from_memory(&body).unwrap();
+        let img = img.to_rgba8();
+        let len = RENDERER.with(|renderer| {
+            let tex = renderer.borrow().load_texture(img);
+            unsafe { TEXTURES.push(tex) };
+            unsafe { TEXTURES.len() }
+        });
+        return len - 1;
     }
 
     pub fn add_object(js_object: JsGameObject) -> usize {
@@ -156,7 +156,7 @@ impl Gloam {
             let this = JsValue::null();
             let objects = objects.borrow();
             if let Some(obj) = objects.get(&id) {
-                f.call1(&this, obj);
+                f.call1(&this, obj).unwrap();
             }
         });
     }
