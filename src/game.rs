@@ -71,6 +71,16 @@ impl Gloam {
         Gloam::update(delta);
     }
 
+    pub fn draw(tex_id: usize, x: f64, y: f64) {
+
+        // Render
+        RENDERER.with(|renderer| unsafe {
+            let renderer = renderer.borrow();
+            log_1(&format!("{x} {y}").into());
+            renderer.draw_image(&TEXTURES[tex_id], x as u32, y as u32);
+        });
+    }
+
     fn update(delta: f64) {
         unsafe {
             DEL_OBJECTS.drain(..).for_each(|x| {
@@ -98,14 +108,14 @@ impl Gloam {
                     object.update(delta);
                 }
             });
-
-            // Render
-            RENDERER.with(|renderer| {
-                let renderer = renderer.borrow();
-                for texture in &TEXTURES {
-                    renderer.draw_image(texture, 0, 0);
-                }
-            });
+            //
+            // // Render
+            // RENDERER.with(|renderer| {
+            //     let renderer = renderer.borrow();
+            //     for texture in &TEXTURES {
+            //         renderer.draw_image(texture, 0, 0);
+            //     }
+            // });
         }
     }
 
