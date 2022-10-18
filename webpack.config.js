@@ -14,7 +14,9 @@ module.exports = {
     filename: "[name].js"
   },
   devServer: {
-    contentBase: dist,
+    static: {
+      directory: dist
+    }
   },
   plugins: [
     new CopyPlugin([
@@ -24,5 +26,20 @@ module.exports = {
     new WasmPackPlugin({
       crateDirectory: __dirname,
     }),
-  ]
+  ],
+  module: {
+    rules: [
+      {
+        test: /\.tsx?$/,
+        use: 'ts-loader',
+        exclude: /node_modules/,
+      }
+    ]
+  },
+  resolve: {
+    extensions: ['.tsx', '.ts', '.js']
+  },
+  experiments: {
+    asyncWebAssembly: true
+  }
 };
